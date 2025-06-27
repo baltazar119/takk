@@ -1,174 +1,146 @@
-// src/app/admin/page.tsx
 'use client';
-import { useState } from 'react';
-import { utils, write } from 'xlsx';
-import { saveAs } from 'file-saver';
+
+import { useEffect, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { utils, write } from 'xlsx';
+import { saveAs } from 'file-saver';
 
-// Tür tanımı
-interface Kayit {
-  id: number;
-  adSoyad: string;
-  okul: string;
-  createdAt: string;
-}
-
-// Excel dışa aktarma
-function exportToExcel(kayitlar: Kayit[]) {
-  const worksheetData = kayitlar.map((k, i) => ({
-    '#': i + 1,
-    'Ad Soyad': k.adSoyad,
-    'Okul': k.okul,
-    'Durum': i < 20 ? 'Asil' : i < 25 ? 'Yedek' : 'Geçersiz',
-    'Kayıt Tarihi': new Date(k.createdAt).toLocaleString('tr-TR'),
-  }));
-
-  const worksheet = utils.json_to_sheet(worksheetData);
-  const workbook = utils.book_new();
-  utils.book_append_sheet(workbook, worksheet, 'Kayıtlar');
-  const excelBuffer = write(workbook, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([excelBuffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  saveAs(blob, `kayitlar_${new Date().toISOString().slice(0, 10)}.xlsx`);
-}
-
-// PDF dışa aktarma
-function exportToPDF(kayitlar: Kayit[]) {
-  const doc = new jsPDF();
-  doc.setFontSize(12);
-  doc.text('Kayıt Listesi', 14, 15);
-  const tableData = kayitlar.map((k, i) => [
-    i + 1,
-    k.adSoyad,
-    k.okul,
-    i < 20 ? 'Asil' : i < 25 ? 'Yedek' : 'Geçersiz',
-    new Date(k.createdAt).toLocaleString('tr-TR'),
-  ]);
-  autoTable(doc, {
-    head: [['#', 'Ad Soyad', 'Okul', 'Durum', 'Tarih']],
-    body: tableData,
-    startY: 20,
-  });
-  doc.save(`kayitlar_${new Date().toISOString().slice(0, 10)}.pdf`);
-}
+type FormData = {
+  id: string;
+  name: string;
+  email: string;
+  school: string;
+};
 
 export default function AdminPage() {
-  const [auth, setAuth] = useState(false);
-  const [error, setError] = useState('');
-  const [form, setForm] = useState({ username: '', password: '' });
-  const [kayitlar, setKayitlar] = useState<Kayit[]>([]);
+  const [formData, setFormData] = useState<FormData[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
 
-  const handleLogin = async (e: any) => {
-    e.preventDefault();
-    if (form.username === 'argem' && form.password === 'argem1234') {
-      setAuth(true);
-      fetchKayitlar();
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fetchData = async () => {
+    const res = await fetch('/api/forms');
+    const data = await res.json();
+    setFormData(data);
+  };
+
+  const handleLogin = () => {
+    if (password === 'argem1234') {
+      setIsAuthenticated(true);
     } else {
-      setError('Kullanıcı adı veya şifre yanlış.');
+      alert('Hatalı şifre');
     }
   };
 
-  const fetchKayitlar = async () => {
-    const res = await fetch('/api/admin');
-    const data = await res.json();
-    setKayitlar(data);
+  const handleDelete = async (id: string) => {
+    const confirmed = confirm('Bu kaydı silmek istediğinizden emin misiniz?');
+    if (!confirmed) return;
+
+    const res = await fetch(`/api/forms/${id}`, {
+      method: 'DELETE',
+    });
+
+    if (res.ok) {
+      setFormData(prev => prev.filter(item => item.id !== id));
+    } else {
+      alert('Silme işlemi başarısız.');
+    }
   };
 
-  const handleDelete = async (id: number) => {
-    const confirm = window.confirm('Bu kaydı silmek istediğinizden emin misiniz?');
-    if (!confirm) return;
-    await fetch(`/api/delete/${id}`, { method: 'DELETE' });
-    fetchKayitlar();
+  const exportPDF = () => {
+    const doc = new jsPDF();
+    autoTable(doc, {
+      head: [['Ad Soyad', 'Email', 'Okul']],
+      body: formData.map(item => [item.name, item.email, item.school]),
+    });
+    doc.save('kayıtlar.pdf');
   };
 
-  if (!auth) {
+  const exportExcel = () => {
+    const worksheet = utils.json_to_sheet(
+      formData.map(({ name, email, school }) => ({
+        'Ad Soyad': name,
+        Email: email,
+        Okul: school,
+      }))
+    );
+    const workbook = { Sheets: { data: worksheet }, SheetNames: ['data'] };
+    const excelBuffer = write(workbook, {
+      bookType: 'xlsx',
+      type: 'array',
+    });
+    const data = new Blob([excelBuffer], { type: 'application/octet-stream' });
+    saveAs(data, 'kayıtlar.xlsx');
+  };
+
+  if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-blue-100 flex items-center justify-center">
-        <form
-          onSubmit={handleLogin}
-          className="bg-white p-8 rounded-lg shadow-xl w-full max-w-sm"
-        >
-          <h2 className="text-xl font-bold text-center text-blue-700 mb-4">Admin Girişi</h2>
-          <input
-            type="text"
-            placeholder="Kullanıcı Adı"
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
-            className="mb-4 p-3 w-full border rounded"
-            required
-          />
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="bg-white p-8 rounded shadow-md">
+          <h1 className="text-2xl font-bold mb-4">Admin Girişi</h1>
           <input
             type="password"
             placeholder="Şifre"
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            className="mb-4 p-3 w-full border rounded"
-            required
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            className="border p-2 w-full mb-4"
           />
           <button
-            type="submit"
-            className="bg-blue-600 text-white w-full py-2 rounded hover:bg-blue-700"
+            onClick={handleLogin}
+            className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded w-full"
           >
             Giriş Yap
           </button>
-          {error && (
-            <p className="mt-4 text-center text-sm text-red-600 bg-red-100 p-2 rounded">
-              {error}
-            </p>
-          )}
-        </form>
-      </main>
+        </div>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 p-10">
-      <div className="max-w-5xl mx-auto bg-white shadow-md rounded-xl p-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-          <h1 className="text-2xl font-bold text-blue-700">Kayıt Listesi</h1>
-          <div className="flex gap-3">
-            <button
-              onClick={() => exportToExcel(kayitlar)}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm"
-            >
-              Excel Olarak İndir
-            </button>
-            <button
-              onClick={() => exportToPDF(kayitlar)}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
-            >
-              PDF Olarak İndir
-            </button>
-          </div>
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold">Kayıtlar</h1>
+        <div className="space-x-2">
+          <button
+            onClick={exportPDF}
+            className="bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded"
+          >
+            PDF Aktar
+          </button>
+          <button
+            onClick={exportExcel}
+            className="bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded"
+          >
+            Excel Aktar
+          </button>
         </div>
+      </div>
 
-        <table className="w-full table-auto border-collapse border border-gray-200">
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white shadow rounded">
           <thead>
-            <tr className="bg-blue-100 text-gray-700">
-              <th className="border px-2 py-1">#</th>
-              <th className="border px-2 py-1">Ad Soyad</th>
-              <th className="border px-2 py-1">Okul</th>
-              <th className="border px-2 py-1">Durum</th>
-              <th className="border px-2 py-1">Tarih</th>
-              <th className="border px-2 py-1">Sil</th>
+            <tr className="bg-gray-200 text-left">
+              <th className="p-2">Ad Soyad</th>
+              <th className="p-2">Email</th>
+              <th className="p-2">Okul</th>
+              <th className="p-2">Sil</th>
             </tr>
           </thead>
           <tbody>
-            {kayitlar.map((k, i) => (
-              <tr key={k.id} className="hover:bg-gray-50 text-sm">
-                <td className="border px-2 py-1 text-center">{i + 1}</td>
-                <td className="border px-2 py-1">{k.adSoyad}</td>
-                <td className="border px-2 py-1">{k.okul}</td>
-                <td className="border px-2 py-1 text-center">
-                  {i < 20 ? 'Asil' : i < 25 ? 'Yedek' : 'Geçersiz'}
-                </td>
-                <td className="border px-2 py-1 text-gray-500">
-                  {new Date(k.createdAt).toLocaleString('tr-TR')}
-                </td>
-                <td className="border px-2 py-1 text-center">
+            {formData.map(item => (
+              <tr key={item.id} className="border-t">
+                <td className="p-2">{item.name}</td>
+                <td className="p-2">{item.email}</td>
+                <td className="p-2">{item.school}</td>
+                <td className="p-2">
                   <button
-                    onClick={() => handleDelete(k.id)}
-                    className="text-red-600 hover:underline"
+                    onClick={() => handleDelete(item.id)}
+                    className="text-red-600 hover:text-red-800"
                   >
                     Sil
                   </button>
@@ -177,11 +149,7 @@ export default function AdminPage() {
             ))}
           </tbody>
         </table>
-
-        <p className="text-sm text-gray-500 mt-4 text-center">
-          Toplam: {kayitlar.length} kayıt
-        </p>
       </div>
-    </main>
+    </div>
   );
 }
