@@ -1,85 +1,99 @@
 'use client';
-import { useState } from 'react';
 
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function Home() {
-  const [formData, setFormData] = useState({ adSoyad: '', okul: '' });
-  const [message, setMessage] = useState('');
-  const [formDisabled, setFormDisabled] = useState(false);
+  const [formData, setFormData] = useState<any[]>([]);
+  const [name, setName] = useState('');
+  const [school, setSchool] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [submitted, setSubmitted] = useState(false);
 
-  const handleChange = (e: any) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useEffect(() => {
+    fetchFormData();
+  }, []);
 
-  const handleSubmit = async (e: any) => {
-    e.preventDefault();
-    const res = await fetch('/api/kayit', {
-      method: 'POST',
-      body: JSON.stringify(formData),
-    });
-
-    const data = await res.json();
-    setMessage(data.message);
-
-    if (data.message.includes('dolmuştur')) {
-      setFormData({ adSoyad: '', okul: '' });
-      setFormDisabled(true);
+  const fetchFormData = async () => {
+    try {
+      const response = await axios.get<FormData[]>('/api/forms');
+      setFormData(response.data);
+    } catch (error) {
+      console.error('Veri alınamadı:', error);
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !school || !email || !phone) return;
+
+    try {
+      await axios.post('/api/forms', { name, school, email, phone });
+      setSubmitted(true);
+      fetchFormData(); // Refresh the list after submit
+    } catch (error) {
+      console.error('Kayıt sırasında hata:', error);
+    }
+  };
+
+  const isFull = formData.length >= 25;
+  const isWaitingList = formData.length >= 20;
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-500 to-teal-400 flex items-center justify-center px-4">
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-8">
-        <h2 className="text-2xl font-bold text-center text-gray-800">Kayıt Ol</h2>
-        <hr className="my-4 border-gray-200" />
+    <main className="min-h-screen bg-gradient-to-br from-blue-100 to-blue-300 flex items-center justify-center p-4">
+      <div className="bg-white shadow-lg rounded-xl p-8 max-w-md w-full">
+        <h1 className="text-2xl font-semibold text-blue-700 mb-4">Etkinlik Kaydı</h1>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-gray-700 text-sm mb-1">Ad Soyad</label>
-            <input
-              name="adSoyad"
-              type="text"
-              placeholder="Adınızı yazın"
-              value={formData.adSoyad}
-              onChange={handleChange}
-              disabled={formDisabled}
-              required
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
+        {submitted || isFull ? (
+          <div className="text-center">
+            {isFull ? (
+              <p className="text-red-500 font-semibold">Kayıtlar dolmuştur.</p>
+            ) : (
+              <p className="text-green-500 font-semibold">Kaydınız alınmıştır.</p>
+            )}
           </div>
-          <div>
-            <label className="block text-gray-700 text-sm mb-1">Okul</label>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
             <input
-              name="okul"
               type="text"
-              placeholder="Okulunuzu yazın"
-              value={formData.okul}
-              onChange={handleChange}
-              disabled={formDisabled}
-              required
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
+              placeholder="Ad Soyad"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-4 py-2 border rounded-md"
             />
-          </div>
-
-          <button
-            type="submit"
-            disabled={formDisabled}
-            className={`w-full py-2 rounded-full font-semibold transition ${
-              formDisabled
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
-            }`}
-          >
-            {formDisabled ? 'Kontenjan Doldu' : 'Kaydol'}
-          </button>
-        </form>
-
-        {message && (
-          <p className="mt-4 text-center text-sm bg-blue-50 text-blue-700 p-2 rounded">{message}</p>
+            <input
+              type="text"
+              placeholder="Okul"
+              value={school}
+              onChange={(e) => setSchool(e.target.value)}
+              className="w-full px-4 py-2 border rounded-md"
+            />
+            <input
+              type="email"
+              placeholder="E-posta"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-2 border rounded-md"
+            />
+            <input
+              type="tel"
+              placeholder="Telefon Numarası"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="w-full px-4 py-2 border rounded-md"
+            />
+            <button
+              type="submit"
+              disabled={isFull}
+              className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition"
+            >
+              {isWaitingList ? 'Yedek Listeye Kaydol' : 'Kaydol'}
+            </button>
+          </form>
         )}
-
-        <p className="text-center text-sm text-gray-500 mt-6">
-          © 2025 Abdulgazi Şimşek tarafından yapılmıştır.
-        </p>
       </div>
     </main>
   );
