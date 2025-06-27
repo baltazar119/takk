@@ -2,99 +2,158 @@
 
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { utils, write } from 'xlsx';
+import { saveAs } from 'file-saver';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function Home() {
-  const [formData, setFormData] = useState<any[]>([]);
-  const [name, setName] = useState('');
-  const [school, setSchool] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+interface FormData {
+  id: number;
+  name: string;
+  email: string;
+  school: string;
+  phone: string;
+  createdAt: string;
+}
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  useEffect(() => {
-    fetchFormData();
-  }, []);
+export default function AdminPage() {
+  const [formData, setFormData] = useState<FormData[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [password, setPassword] = useState<string>('');
 
-  const fetchFormData = async () => {
+  const fetchData = async () => {
     try {
       const response = await axios.get<FormData[]>('/api/forms');
       setFormData(response.data);
     } catch (error) {
-      console.error('Veri alınamadı:', error);
+      console.error('Veri alınırken hata oluştu:', error);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || !school || !email || !phone) return;
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [isAuthenticated]);
 
+  const handleDelete = async (id: number) => {
     try {
-      await axios.post('/api/forms', { name, school, email, phone });
-      setSubmitted(true);
-      fetchFormData(); // Refresh the list after submit
+      await axios.delete(`/api/forms/${id}`);
+      setFormData((prev) => prev.filter((item) => item.id !== id));
     } catch (error) {
-      console.error('Kayıt sırasında hata:', error);
+      console.error('Silme hatası:', error);
     }
   };
 
-  const isFull = formData.length >= 25;
-  const isWaitingList = formData.length >= 20;
+  const exportPDF = () => {
+    const doc = new jsPDF();
+    autoTable(doc, {
+      head: [['Ad Soyad', 'E-posta', 'Okul', 'Telefon', 'Tarih']],
+      body: formData.map(({ name, email, school, phone, createdAt }) => [
+        name,
+        email,
+        school,
+        phone,
+        createdAt,
+      ]),
+    });
+    doc.save('veriler.pdf');
+  };
+
+  const exportExcel = () => {
+    const ws = utils.json_to_sheet(formData);
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, 'Veriler');
+    const excelBuffer = write(wb, { bookType: 'xlsx', type: 'array' });
+    const data = new Blob([excelBuffer], { type: 'application/octet-stream' });
+    saveAs(data, 'veriler.xlsx');
+  };
+
+  const handleLogin = () => {
+    if (password === 'argem1234') {
+      setIsAuthenticated(true);
+    } else {
+      alert('Şifre yanlış');
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="bg-white p-8 rounded shadow-md w-80">
+          <h2 className="text-xl font-bold mb-4">Admin Girişi</h2>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Şifre"
+            className="border p-2 w-full mb-4 rounded"
+          />
+          <button
+            onClick={handleLogin}
+            className="bg-blue-600 text-white px-4 py-2 rounded w-full"
+          >
+            Giriş Yap
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-100 to-blue-300 flex items-center justify-center p-4">
-      <div className="bg-white shadow-lg rounded-xl p-8 max-w-md w-full">
-        <h1 className="text-2xl font-semibold text-blue-700 mb-4">Etkinlik Kaydı</h1>
+    <div className="min-h-screen p-8 bg-gray-50">
+      <h1 className="text-2xl font-bold mb-6 text-center">Kayıtlı Katılımcılar</h1>
 
-        {submitted || isFull ? (
-          <div className="text-center">
-            {isFull ? (
-              <p className="text-red-500 font-semibold">Kayıtlar dolmuştur.</p>
-            ) : (
-              <p className="text-green-500 font-semibold">Kaydınız alınmıştır.</p>
-            )}
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <input
-              type="text"
-              placeholder="Ad Soyad"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2 border rounded-md"
-            />
-            <input
-              type="text"
-              placeholder="Okul"
-              value={school}
-              onChange={(e) => setSchool(e.target.value)}
-              className="w-full px-4 py-2 border rounded-md"
-            />
-            <input
-              type="email"
-              placeholder="E-posta"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 border rounded-md"
-            />
-            <input
-              type="tel"
-              placeholder="Telefon Numarası"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full px-4 py-2 border rounded-md"
-            />
-            <button
-              type="submit"
-              disabled={isFull}
-              className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition"
-            >
-              {isWaitingList ? 'Yedek Listeye Kaydol' : 'Kaydol'}
-            </button>
-          </form>
-        )}
+      <div className="flex justify-center gap-4 mb-6">
+        <button
+          onClick={exportPDF}
+          className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+        >
+          PDF İndir
+        </button>
+        <button
+          onClick={exportExcel}
+          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+        >
+          Excel İndir
+        </button>
       </div>
-    </main>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white shadow rounded">
+          <thead>
+            <tr className="bg-gray-200 text-center">
+              <th className="py-2 px-4 border">Ad Soyad</th>
+              <th className="py-2 px-4 border">E-posta</th>
+              <th className="py-2 px-4 border">Okul</th>
+              <th className="py-2 px-4 border">Telefon</th>
+              <th className="py-2 px-4 border">Tarih</th>
+              <th className="py-2 px-4 border">Sil</th>
+            </tr>
+          </thead>
+          <tbody>
+            {formData.map((form) => (
+              <tr key={form.id} className="text-center">
+                <td className="py-2 px-4 border">{form.name}</td>
+                <td className="py-2 px-4 border">{form.email}</td>
+                <td className="py-2 px-4 border">{form.school}</td>
+                <td className="py-2 px-4 border">{form.phone}</td>
+                <td className="py-2 px-4 border">
+                  {new Date(form.createdAt).toLocaleString('tr-TR')}
+                </td>
+                <td className="py-2 px-4 border">
+                  <button
+                    onClick={() => handleDelete(form.id)}
+                    className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
+                  >
+                    Sil
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
